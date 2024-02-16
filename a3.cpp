@@ -57,23 +57,19 @@ int arr[36][36] = {
 
 int main(int argc, char *argv[])
 {
-
+    // variables for MPI
     int id;
-
     int numProcesses;
-
-    auto start_time = std::chrono::high_resolution_clock::now();
-
     int grpsize = sqrt(numProcesses);
-
     int colorRow = id / grpsize;
     int colorColumn = id % grpsize;
-
     int rowId;
     int rowSize;
-
     int colId;
     int colSize;
+
+    // timer
+    auto start_time = std::chrono::high_resolution_clock::now();
 
     int array[n][n];
     for (int i = 0; i < n; i++)
@@ -81,18 +77,24 @@ int main(int argc, char *argv[])
             array[i][j] = arr[i][j];
     int arrayRowSize = n;
 
-    // broadcast attempt
+    // broadcast attempt (MPI)
+    // iterate through k
     for (int k = 1; k <= n; k++)
     {
+        // k-1 represents the k-1th vector of a graph (i.e. if k-1 = 0 then the 0th element represents the vector located in (0,0))
+        // this vector is the intermediate vector used for calculation in the kth iteration
         int prevk = k - 1;
-        // send column
+
+        // send column (MPI)
+        // k-1th column of the matrix
         int colArr[arrayRowSize];
         for (int i = 0; i < arrayRowSize; i++)
         {
             colArr[i] = array[i][prevk % arrayRowSize];
         }
 
-        // send row
+        // send row (MPI)
+        // k-1th row of the matrix
         int rowArr[arrayRowSize];
         for (int i = 0; i < arrayRowSize; i++)
         {
@@ -100,15 +102,19 @@ int main(int argc, char *argv[])
         }
 
         // compute matrix of process
+        // calculate and update every possible shortest path this in this iteration
         for (int i = 0; i < arrayRowSize; i++)
         {
             for (int j = 0; j < arrayRowSize; j++)
             {
+                // the minimum between the current value
+                // and the value of the path with the k-1th intermediate vector
                 array[i][j] = min(array[i][j], rowArr[j] + colArr[i]);
             }
         }
     }
 
+    // ---MPI---
     int finalMatrix[n][n];
     int counts[numProcesses];
     for (int i = 0; i < numProcesses; i++)
@@ -120,11 +126,12 @@ int main(int argc, char *argv[])
     {
         displacements[i] = i * arrayRowSize;
     }
+    // ---MPI---
 
     ios init(NULL);
     init.copyfmt(cout);
 
-    // print matrix
+    // print result matrix
     cout << "ID " << id << ":\n";
     for (int i = 0; i < n; i++)
     {
@@ -138,6 +145,7 @@ int main(int argc, char *argv[])
     }
     cout << "\n";
 
+    // count duration
     auto end_time = std::chrono::high_resolution_clock::now();
     auto time = (end_time - start_time) / std::chrono::microseconds(1);
     cout << "Floyd's algorithm using no algorithms took ";

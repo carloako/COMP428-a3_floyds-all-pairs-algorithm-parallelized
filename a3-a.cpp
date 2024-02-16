@@ -57,22 +57,20 @@ int arr[36][36] = {
 
 int main(int argc, char *argv[])
 {
-
-    int id;
-
-    int numProcesses;
-
     MPI_Init(&argc, &argv);
 
     float initialTime = MPI_Wtime();
 
+    int numProcesses;
     MPI_Comm_size(MPI_COMM_WORLD, &numProcesses);
-
-    MPI_Comm_rank(MPI_COMM_WORLD, &id);
-
     int grpsize = sqrt(numProcesses);
 
+    int id;
+    MPI_Comm_rank(MPI_COMM_WORLD, &id);
+
+    // row group
     int colorRow = id / grpsize;
+    // column group
     int colorColumn = id % grpsize;
 
     MPI_Comm rowComm;
@@ -92,12 +90,15 @@ int main(int argc, char *argv[])
     MPI_Comm_size(colComm, &colSize);
     MPI_Comm_rank(colComm, &colId);
 
+    // size of the array in each processor (36*36 / np)
     int arrayRowSize = sqrt(pow(n, 2) / numProcesses);
+    // initialize the array in each processor 
     int array[arrayRowSize][arrayRowSize];
 
+    // p0 as the master process handling initial data and end result
     if (id == 0)
     {
-        // fill up p0 array
+        // initialize p0 array
         for (int i = 0; i < arrayRowSize; i++)
         {
             for (int j = 0; j < arrayRowSize; j++)
@@ -114,6 +115,7 @@ int main(int argc, char *argv[])
                 int sendArr[arrayRowSize];
                 for (int k = 0; k < arrayRowSize; k++)
                 {
+                    // send array based on the logistical position of the process in the network
                     sendArr[k] = arr[j + i / grpsize * arrayRowSize][k + i % grpsize * arrayRowSize];
                 }
                 MPI_Send(sendArr, arrayRowSize, MPI_INT, i, 0, MPI_COMM_WORLD);
@@ -133,7 +135,7 @@ int main(int argc, char *argv[])
     for (int k = 1; k <= n; k++)
     {
         int prevk = k - 1;
-        // send column
+        // broadcast k-1th column to all the processes in the same row the of the process/es that holds the column
         int colSender = 0;
         int colArr[arrayRowSize];
         for (int row = 0; row < rowSize; row++)
@@ -153,9 +155,10 @@ int main(int argc, char *argv[])
         }
         MPI_Bcast(colArr, arrayRowSize, MPI_INT, colSender, rowComm);
 
-        // send row
+        // broadcast k-1th row to all the processes in the same column of the process/es that holds the row
         int rowSender = 0;
         int rowArr[arrayRowSize];
+        // set the rowsender
         for (int col = 0; col < colSize; col++)
         {
             if (prevk >= (col * arrayRowSize) && prevk < ((col + 1) * arrayRowSize))
@@ -164,6 +167,7 @@ int main(int argc, char *argv[])
                 break;
             }
         }
+        // set the k-1th row array to be sent
         if (prevk >= (colId * arrayRowSize) && prevk < ((colId + 1) * arrayRowSize))
         {
             for (int i = 0; i < arrayRowSize; i++)
@@ -183,21 +187,28 @@ int main(int argc, char *argv[])
         }
     }
 
+    // store result matrix
     int finalMatrix[n][n];
     int counts[numProcesses];
+
+    // counter for array size
     for (int i = 0; i < numProcesses; i++)
     {
         counts[i] = arrayRowSize;
     }
     int displacements[numProcesses];
+
+    // an array of displacements of the arrays of each processes
     for (int i = 0; i < numProcesses; i++)
     {
         displacements[i] = i * arrayRowSize;
     }
+
     // gather matrix
     if (id == 0)
     {
         MPI_Status status;
+        // p0 receives the arrays from processes in rows
         for (int i = 0; i < arrayRowSize; i++)
         {
             int tempArr[arrayRowSize * numProcesses];
@@ -215,6 +226,7 @@ int main(int argc, char *argv[])
     }
     else
     {
+        // every other processes sends the arrays to p0 in rows
         for (int i = 0; i < arrayRowSize; i++)
         {
             MPI_Gatherv(array[i], arrayRowSize, MPI_INT, NULL, NULL, NULL, MPI_INT, 0, MPI_COMM_WORLD);
